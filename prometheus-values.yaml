@@ -1,0 +1,56 @@
+grafana:
+  adminPassword: "korrelate123"
+  service:
+    type: NodePort
+    nodePort: 30000
+  persistence:
+    enabled: true
+    size: 2Gi
+
+prometheus:
+  service:
+    type: NodePort
+    nodePort: 30001
+  prometheusSpec:
+    retention: 24h
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+    # Allow Prometheus to pick up PrometheusRules from any namespace
+    ruleNamespaceSelector: {}
+    ruleSelector: {}
+    serviceMonitorNamespaceSelector: {}
+    serviceMonitorSelector: {}
+    podMonitorNamespaceSelector: {}
+    podMonitorSelector: {}
+
+alertmanager:
+  service:
+    type: NodePort
+    nodePort: 30002
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 1Gi
+
+# Reduce resource usage for local dev
+kubeStateMetrics:
+  enabled: true
+nodeExporter:
+  enabled: true
+
+# Disable components that are heavy and not needed yet
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
