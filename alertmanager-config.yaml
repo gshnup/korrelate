@@ -1,27 +1,33 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: alertmanager-monitoring-kube-prome-alertmanager
+  name: alertmanager-config
   namespace: monitoring
 data:
-  alertmanager.yaml: |
+  alertmanager.yml: |
     global:
       resolve_timeout: 5m
+
     route:
-      group_by: ['alertname', 'job']
+      group_by: ['alertname', 'service']
       group_wait: 10s
-      group_interval: 10s
-      repeat_interval: 1h
+      group_interval: 30s
+      repeat_interval: 5m
       receiver: 'null'
       routes:
         - matchers:
             - alertname = "PaymentServiceHighErrorRate"
-          receiver: korrelate
-          group_wait: 5s
+          receiver: korrelate-webhook
+          group_wait: 10s
+          group_interval: 30s
           repeat_interval: 5m
+          continue: false
+
     receivers:
       - name: 'null'
-      - name: korrelate
+      - name: korrelate-webhook
         webhook_configs:
           - url: 'http://172.20.0.1:8000/webhook'
-            send_resolved: false
+            send_resolved: true
+            http_config: {}
+            max_alerts: 0

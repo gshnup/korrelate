@@ -1,32 +1,97 @@
-# Korrelate
+# Korrelate — Open Source AI Incident Correlation Engine
 
-AI-powered incident correlation engine. Prometheus fires → Korrelate thinks → Slack knows.
+**Alert fires. Root cause in 60 seconds. No cloud LLMs.**
 
----
-
-## Architecture
-
-When an alert fires, Korrelate has 60 seconds to pull metrics from Prometheus, 
-pull logs from Loki, bundle the context, call a local LLM, and post a structured 
-root cause diagnosis to Slack. No cloud LLMs. No alert fatigue. Just signal.
+[![CI](https://github.com/YOUR_USERNAME/korrelate/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/korrelate/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
 
-## Step 1 — Slack Webhook
+## Demo
 
-**What it does:** Provides the output channel for all incident diagnosis cards.
-Korrelate POSTs structured Block Kit JSON to this endpoint at pipeline completion.
+![Demo](docs/demo.gif)
 
-**Why Incoming Webhooks over the full Slack API:** No token refresh, no OAuth,
-no bot user management. A webhook is a signed URL — deterministic, stateless,
-exactly right for a fire-and-forget notifier.
+Paymentservice crashes → Korrelate pulls metrics + logs → Mistral 7B diagnoses → Slack card in **42 seconds**. Entirely on-prem.
 
-**Verification:**
-```bash
-source .env
-curl -s -X POST "$SLACK_WEBHOOK_URL" \
-  -H 'Content-type: application/json' \
-  -d '{"text": "webhook live"}' | cat
-# Expected: ok
+---
+
+## How It Works
+
+```mermaid
+flowchart LR
+    A[Prometheus\nAlert fires] -->|webhook| B[Korrelate\n/webhook]
+    B --> C{Dedup\ncache}
+    C -->|new alert| D[Prometheus\nmetrics fetch]
+    C -->|seen under 5m| Z[Drop]
+    D --> E[Loki\nlog fetch]
+    E --> F[Ollama\nMistral 7B]
+    F -->|diagnosis| G[Slack\n#incidents]
 ```
 
+---
+
+## Stack
+
+| Component | Role |
+|---|---|
+| Prometheus + Alertmanager | Alert detection and routing |
+| Loki + Promtail | Log aggregation |
+| Ollama + Mistral 7B | Local LLM inference |
+| FastAPI | Webhook server and pipeline orchestrator |
+| kind | Local Kubernetes cluster |
+
+---
+
+## Quick Start
+
+**Prerequisites**: Docker, kind, kubectl, Python 3.11, [Ollama](https://ollama.ai)
+
+```bash
+git clone https://github.com/YOUR_USERNAME/korrelate.git
+cd korrelate
+cp .env.example .env
+# Edit .env — set SLACK_WEBHOOK_URL at minimum
+pip install -r requirements.txt
+ollama pull mistral:7b
+uvicorn korrelate.main:app --host 0.0.0.0 --port 8000
+```
+
+---
+
+## Configuration
+
+| Variable | Required | Description |
+|---|---|---|
+| `SLACK_WEBHOOK_URL` | Yes | Incoming webhook for #incidents |
+| `PROMETHEUS_URL` | Yes | Prometheus HTTP API base URL |
+| `LOKI_URL` | Yes | Loki HTTP API base URL |
+| `OLLAMA_URL` | Yes | Ollama server base URL |
+| `OLLAMA_MODEL` | Yes | Model tag (default: mistral:7b) |
+
+---
+
+## Architecture Decisions
+
+- **Ollama over OpenAI** — Zero data egress. Incidents contain PII.
+- **Loki over Elasticsearch** — 10x cheaper at small scale. LogQL is readable.
+- **FastAPI over Flask** — Native async keeps pipeline non-blocking.
+- **kind over minikube** — Multi-node support in CI without a hypervisor.
+- **In-memory dedup over Kafka** — Zero dependencies at one-host scale.
+
+---
+
+## Contributing
+
+PRs welcome. One feature per PR. Add a test.
+
+```bash
+git clone ...
+pip install -r requirements.txt
+python -m pytest tests/ -v
+```
+
+---
+
+## License
+
+MIT. See [LICENSE](LICENSE).

@@ -32,33 +32,44 @@ SLACK_WEBHOOK  = os.getenv("SLACK_WEBHOOK_URL", "")
 
 pipeline_status = {"last_alert": None, "last_run_seconds": None, "total_runs": 0}
 
+# ── Deduplication ──────────────────────────────────────────────────
+seen_alerts: dict[str, float] = {}
+DEDUP_TTL = 300  # 5 minutes
+
+def _dedup_key(alert: dict) -> str:
+    return f"{alert['name']}::{alert['service']}"
+
+def _is_duplicate(key: str) -> bool:
+    now = time.monotonic()
+    if key in seen_alerts:
+        if now - seen_alerts[key] < DEDUP_TTL:
+            return True
+    seen_alerts[key] = now
+    return False
+# ──────────────────────────────────────────────────────────────────
+
 
 async def run_pipeline(alert: dict[str, Any]) -> None:
     t_start = time.time()
     service = alert.get("service", "paymentservice")
     logger.info(f"Pipeline START — alert={alert['name']} service={service}")
 
-    # Stage 1: Pull metrics
     t1 = time.time()
     metrics = await get_metrics(PROMETHEUS_URL, service)
     logger.info(f"[{time.time()-t1:.2f}s] Metrics pulled")
 
-    # Stage 2: Pull logs
     t2 = time.time()
     logs = await get_logs(LOKI_URL, service)
     logger.info(f"[{time.time()-t2:.2f}s] Logs pulled — {len(logs)} entries")
 
-    # Stage 3: Bundle context
     t3 = time.time()
     context = bundler.bundle(alert, metrics, logs)
     logger.info(f"[{time.time()-t3:.2f}s] Context bundled")
 
-    # Stage 4: LLM diagnosis
     t4 = time.time()
     diagnosis = await llm.diagnose(OLLAMA_URL, OLLAMA_MODEL, context)
     logger.info(f"[{time.time()-t4:.2f}s] LLM diagnosis complete")
 
-    # Stage 5: Post to Slack
     t5 = time.time()
     await notifier.post(SLACK_WEBHOOK, context, diagnosis)
     logger.info(f"[{time.time()-t5:.2f}s] Slack notified")
@@ -90,6 +101,12 @@ app = FastAPI(title="Korrelate", version="0.2.0")
 async def webhook(request: Request, background_tasks: BackgroundTasks):
     payload = await request.json()
     alert = parse_alertmanager_payload(payload)
+    key = _dedup_key(alert)
+
+    if _is_duplicate(key):
+        logger.info(f"DEDUPLICATED — alert={key} (TTL {DEDUP_TTL}s)")
+        return JSONResponse({"status": "deduplicated", "alert": alert["name"]})
+
     pipeline_status["last_alert"] = alert["name"]
     logger.info(f"Webhook received: {alert['name']} severity={alert['severity']}")
     background_tasks.add_task(run_pipeline, alert)

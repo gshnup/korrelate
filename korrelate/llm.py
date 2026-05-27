@@ -66,7 +66,7 @@ async def diagnose(ollama_url: str, model: str, context_bundle: dict[str, Any]) 
 
     t0 = time.time()
     try:
-        async with httpx.AsyncClient(timeout=55) as client:
+        async with httpx.AsyncClient(timeout=120) as client:
             r = await client.post(f"{ollama_url}/api/generate", json=payload)
             r.raise_for_status()
             raw = r.json().get("response", "")

@@ -13,7 +13,7 @@ async def get_logs(base_url: str, service: str, limit: int = 50) -> list[dict[st
     start = end - timedelta(minutes=10)
 
     params = {
-        "query": f'{{job=~".*{service}.*"}} |~ "(?i)(error|critical|exception|traceback|500)"',
+        "query": f'{{app="{service}"}} |~ "(?i)(error|critical|exception|traceback|500)"',
         "start": str(int(start.timestamp() * 1e9)),
         "end": str(int(end.timestamp() * 1e9)),
         "limit": limit,
