@@ -1,4 +1,9 @@
+cat > .gitignore << 'EOF'
+# Secrets
 .env
+.env.*
+
+# Python
 venv/
 __pycache__/
 *.pyc
@@ -7,4 +12,38 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+terraform.tfvars
+terraform.tfvars.json
+
+# IDE
+.vscode/
+.idea/
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Downloads / binaries
+*.tar.gz
+*.zip
+
+# Kubernetes
+kubeconfig
+EOF
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+
+# Archives
+*.tar.gz

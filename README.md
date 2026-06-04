@@ -1,97 +1,231 @@
-# Korrelate — Open Source AI Incident Correlation Engine
+# Korrelate
 
-**Alert fires. Root cause in 60 seconds. No cloud LLMs.**
+> Alerts tell you something is broken.
+> Korrelate tries to tell you why.
 
-[![CI](https://github.com/YOUR_USERNAME/korrelate/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/korrelate/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+Korrelate is an AI-powered incident investigation engine that automatically gathers metrics, correlates logs, generates a root-cause hypothesis, and delivers a structured incident report to Slack.
 
----
+Instead of forwarding raw alerts to engineers, Korrelate performs the first stage of the investigation automatically.
 
-## Demo
-
-![Demo](docs/demo.gif)
-
-Paymentservice crashes → Korrelate pulls metrics + logs → Mistral 7B diagnoses → Slack card in **42 seconds**. Entirely on-prem.
+Built with Kubernetes, Prometheus, Loki, FastAPI, Terraform, and a locally hosted Mistral 7B model running through Ollama.
 
 ---
 
-## How It Works
+## A Real Incident Report
 
-```mermaid
-flowchart LR
-    A[Prometheus\nAlert fires] -->|webhook| B[Korrelate\n/webhook]
-    B --> C{Dedup\ncache}
-    C -->|new alert| D[Prometheus\nmetrics fetch]
-    C -->|seen under 5m| Z[Drop]
-    D --> E[Loki\nlog fetch]
-    E --> F[Ollama\nMistral 7B]
-    F -->|diagnosis| G[Slack\n#incidents]
+![Incident Report](screenshots/slack-incident-report.png)
+
+When an alert fires, Korrelate produces:
+
+* Root cause hypothesis
+* Confidence assessment
+* Supporting evidence
+* Recommended next actions
+
+The goal is not to replace engineers.
+
+The goal is to eliminate the first 15 minutes of incident investigation.
+
+---
+
+## Why I Built This
+
+Most observability pipelines stop at detection.
+
+```text
+Prometheus
+    ↓
+Alertmanager
+    ↓
+Slack
+```
+
+The engineer still has to:
+
+* Open dashboards
+* Inspect metrics
+* Search logs
+* Correlate signals
+* Form a hypothesis
+
+Korrelate inserts an investigation layer between the alert and the engineer.
+
+```text
+Alert
+   ↓
+Korrelate
+   ↓
+Evidence Collection
+   ↓
+AI Analysis
+   ↓
+Incident Report
+```
+
+Instead of receiving an alert, the engineer receives a starting point.
+
+---
+
+## Architecture
+
+![Architecture](screenshots/architecture-diagram.png)
+
+---
+
+## End-to-End Flow
+
+```text
+Payment Service
+        │
+        ▼
+Prometheus detects abnormal behaviour
+        │
+        ▼
+Alertmanager sends webhook
+        │
+        ▼
+Korrelate receives alert
+        │
+        ├── Query Prometheus metrics
+        ├── Query Loki logs
+        ├── Build investigation context
+        └── Generate diagnosis using Mistral 7B
+        │
+        ▼
+Slack Incident Report
 ```
 
 ---
 
-## Stack
+## Pipeline Execution
 
-| Component | Role |
-|---|---|
-| Prometheus + Alertmanager | Alert detection and routing |
-| Loki + Promtail | Log aggregation |
-| Ollama + Mistral 7B | Local LLM inference |
-| FastAPI | Webhook server and pipeline orchestrator |
-| kind | Local Kubernetes cluster |
+![Pipeline Execution](screenshots/pipeline-execution.png)
+
+Typical execution path:
+
+```text
+Webhook received
+      ↓
+Metrics collected
+      ↓
+Logs collected
+      ↓
+Context bundled
+      ↓
+LLM diagnosis generated
+      ↓
+Slack notified
+      ↓
+Pipeline complete
+```
+
+Observed end-to-end execution time:
+
+**40–55 seconds**
 
 ---
 
-## Quick Start
+## Technology Stack
 
-**Prerequisites**: Docker, kind, kubectl, Python 3.11, [Ollama](https://ollama.ai)
+| Layer              | Technology              |
+| ------------------ | ----------------------- |
+| Infrastructure     | Terraform               |
+| Container Platform | Kubernetes (kind / EKS) |
+| Monitoring         | Prometheus              |
+| Alerting           | Alertmanager            |
+| Logging            | Loki + Promtail         |
+| Backend            | FastAPI                 |
+| AI Inference       | Ollama + Mistral 7B     |
+| Notifications      | Slack                   |
+| CI                 | GitHub Actions          |
+
+---
+
+## Infrastructure
+
+Terraform definitions are located in:
+
+```text
+infra/
+```
+
+Provisioned resources:
+
+* VPC
+* Public Subnets
+* Amazon EKS Cluster
+* Managed Node Groups
+
+---
+
+## Repository Structure
+
+```text
+korrelate/
+├── infra/
+├── korrelate/
+│   ├── clients/
+│   ├── bundler.py
+│   ├── llm.py
+│   ├── notifier.py
+│   └── main.py
+├── paymentservice/
+├── screenshots/
+├── tests/
+├── Dockerfile
+└── README.md
+```
+
+---
+
+## Running Locally
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/korrelate.git
+git clone https://github.com/gshnup/korrelate.git
 cd korrelate
+
 cp .env.example .env
-# Edit .env — set SLACK_WEBHOOK_URL at minimum
+
 pip install -r requirements.txt
+
 ollama pull mistral:7b
-uvicorn korrelate.main:app --host 0.0.0.0 --port 8000
+
+uvicorn korrelate.main:app \
+  --host 0.0.0.0 \
+  --port 8000
 ```
 
 ---
 
-## Configuration
+## Key Takeaways
 
-| Variable | Required | Description |
-|---|---|---|
-| `SLACK_WEBHOOK_URL` | Yes | Incoming webhook for #incidents |
-| `PROMETHEUS_URL` | Yes | Prometheus HTTP API base URL |
-| `LOKI_URL` | Yes | Loki HTTP API base URL |
-| `OLLAMA_URL` | Yes | Ollama server base URL |
-| `OLLAMA_MODEL` | Yes | Model tag (default: mistral:7b) |
+This project involved building across multiple layers of the stack:
 
----
+* Infrastructure as Code
+* Kubernetes operations
+* Observability engineering
+* Incident response workflows
+* LLM integration
+* Async Python services
+* Alert-driven automation
 
-## Architecture Decisions
+The biggest lesson was that detecting incidents is only half the problem.
 
-- **Ollama over OpenAI** — Zero data egress. Incidents contain PII.
-- **Loki over Elasticsearch** — 10x cheaper at small scale. LogQL is readable.
-- **FastAPI over Flask** — Native async keeps pipeline non-blocking.
-- **kind over minikube** — Multi-node support in CI without a hypervisor.
-- **In-memory dedup over Kafka** — Zero dependencies at one-host scale.
+The harder problem is reducing the time between an alert and a useful hypothesis.
 
 ---
 
-## Contributing
+## Future Improvements
 
-PRs welcome. One feature per PR. Add a test.
-
-```bash
-git clone ...
-pip install -r requirements.txt
-python -m pytest tests/ -v
-```
+* ArgoCD GitOps deployment
+* Redis-backed alert deduplication
+* Multi-service incident correlation
+* Historical incident knowledge base
+* Production-grade EKS deployment
+* LLM evaluation framework
 
 ---
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT
